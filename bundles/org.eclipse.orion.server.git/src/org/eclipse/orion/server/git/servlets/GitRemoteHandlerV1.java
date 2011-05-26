@@ -261,9 +261,10 @@ public class GitRemoteHandlerV1 extends ServletResourceHandler<String> {
 		config.save();
 
 		URI baseLocation = getURI(request);
-		response.setHeader(ProtocolConstants.HEADER_LOCATION, baseToRemoteLocation(baseLocation, 3, remoteName).toString());
+		JSONObject result = toJSON(remoteName, baseLocation, 2);
+		response.setHeader(ProtocolConstants.HEADER_LOCATION, result.getString(ProtocolConstants.KEY_LOCATION));
 		response.setStatus(HttpServletResponse.SC_CREATED);
-		//TODO: handle result
+		OrionServlet.writeJSONResponse(request, response, result);
 		return true;
 	}
 
@@ -320,5 +321,11 @@ public class GitRemoteHandlerV1 extends ServletResourceHandler<String> {
 		IPath filePath = path.removeFirstSegments(c).makeAbsolute();
 		uriPath = GitServlet.GIT_URI + "/" + GitConstants.COMMIT_RESOURCE + "/" + ref + filePath.toString(); //$NON-NLS-1$ //$NON-NLS-2$
 		return new URI(u.getScheme(), u.getUserInfo(), u.getHost(), u.getPort(), uriPath, u.getQuery(), u.getFragment());
+	}
+
+	private JSONObject toJSON(String remoteName, URI baseLocation, int c) throws JSONException, URISyntaxException {
+		JSONObject result = new JSONObject();
+		result.put(ProtocolConstants.KEY_LOCATION, baseToRemoteLocation(baseLocation, c, remoteName));
+		return result;
 	}
 }
