@@ -14,8 +14,8 @@ import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.*;
 import java.util.Map.Entry;
+import java.util.Set;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -85,53 +85,16 @@ public class GitRemoteHandlerV1 extends ServletResourceHandler<String> {
 			// /git/remote/{remote}/file/{path}
 			File gitDir = GitUtils.getGitDir(p.removeFirstSegments(1));
 			Repository db = new FileRepository(gitDir);
-			Set<String> configNames = db.getConfig().getSubsections(ConfigConstants.CONFIG_REMOTE_SECTION);
-			JSONObject result = new JSONObject();
 			URI baseLocation = getURI(request);
 
-			for (String configName : configNames) {
-				if (configName.equals(p.segment(0))) {
-					result.put(ProtocolConstants.KEY_NAME, configName);
-					result.put(ProtocolConstants.KEY_TYPE, GitConstants.KEY_REMOTE_NAME);
-					result.put(ProtocolConstants.KEY_LOCATION, BaseToRemoteConverter.REMOVE_FIRST_3.baseToRemoteLocation(baseLocation, p.segment(0), "" /* no branch name */)); //$NON-NLS-1$
+			JSONObject result = RemoteToJSONConverter.toJSON(p.segment(0), db, baseLocation, BaseToRemoteConverter.REMOVE_FIRST_3);
 
-					JSONArray children = new JSONArray();
-					List<Ref> refs = new ArrayList<Ref>();
-					for (Entry<String, Ref> refEntry : db.getRefDatabase().getRefs(Constants.R_REMOTES + p.uptoSegment(1)).entrySet()) {
-						if (!refEntry.getValue().isSymbolic()) {
-							Ref ref = refEntry.getValue();
-							String name = ref.getName();
-							name = Repository.shortenRefName(name).substring(Constants.DEFAULT_REMOTE_NAME.length() + 1);
-							if (db.getBranch().equals(name)) {
-								refs.add(0, ref);
-							} else {
-								refs.add(ref);
-							}
-						}
-					}
-					for (Ref ref : refs) {
-						JSONObject o = new JSONObject();
-						String name = ref.getName();
-						o.put(ProtocolConstants.KEY_NAME, name);
-						o.put(ProtocolConstants.KEY_TYPE, GitConstants.REMOTE_TRACKING_BRANCH_TYPE);
-						o.put(ProtocolConstants.KEY_ID, ref.getObjectId().name());
-						// see bug 342602
-						// o.put(GitConstants.KEY_COMMIT, baseToCommitLocation(baseLocation, name));
-						o.put(ProtocolConstants.KEY_LOCATION, BaseToRemoteConverter.REMOVE_FIRST_3.baseToRemoteLocation(baseLocation, "" /*short name is {remote}/{branch}*/, Repository.shortenRefName(name))); //$NON-NLS-1$
-						o.put(GitConstants.KEY_COMMIT, BaseToCommitConverter.getCommitLocation(baseLocation, ref.getObjectId().name(), BaseToCommitConverter.REMOVE_FIRST_3));
-						o.put(GitConstants.KEY_HEAD, BaseToCommitConverter.getCommitLocation(baseLocation, Constants.HEAD, BaseToCommitConverter.REMOVE_FIRST_3));
-						o.put(GitConstants.KEY_CLONE, BaseToCloneConverter.getCloneLocation(baseLocation, BaseToCloneConverter.REMOTE_BRANCH));
-						o.put(GitConstants.KEY_BRANCH, BaseToBranchConverter.getBranchLocation(baseLocation, BaseToBranchConverter.REMOTE_BRANCH));
-						o.put(GitConstants.KEY_INDEX, BaseToIndexConverter.getIndexLocation(baseLocation, BaseToIndexConverter.REMOTE_BRANCH));
-						children.put(o);
-					}
-					result.put(ProtocolConstants.KEY_CHILDREN, children);
-					OrionServlet.writeJSONResponse(request, response, result);
-					return true;
-				}
+			if (result == null) {
+				String msg = NLS.bind("Couldn't find remote : {0}", p.segment(0));
+				return statusHandler.handleRequest(request, response, new ServerStatus(IStatus.ERROR, HttpServletResponse.SC_NOT_FOUND, msg, null));
 			}
-			String msg = NLS.bind("Couldn't find remote : {0}", p.segment(0));
-			return statusHandler.handleRequest(request, response, new ServerStatus(IStatus.ERROR, HttpServletResponse.SC_NOT_FOUND, msg, null));
+			OrionServlet.writeJSONResponse(request, response, result);
+			return true;
 		} else if (p.segment(2).equals("file")) { //$NON-NLS-1$
 			// /git/remote/{remote}/{branch}/file/{path}
 			File gitDir = GitUtils.getGitDir(p.removeFirstSegments(2));
