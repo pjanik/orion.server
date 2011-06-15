@@ -84,6 +84,24 @@ public class GitUtils {
 		return result;
 	}
 
+	/**
+	 * Returns the path representing the clone resource for the given path.
+	 * If the path is not a Git repository or an error occurred while transforming
+	 * the given path into a store <code>null</code> is returned.
+	 * @param path expected format /file/{projectId}[/{path}]
+	 * @return the path representing the clone resource if found or <code>null</code>
+	 * if the given path cannot be resolved to a file or it's not under control
+	 *  of a git repository
+	 * @throws CoreException 
+	 */
+	public static IPath getGitRootPath(IPath path) throws CoreException {
+		Map<IPath, File> paths = getGitDirs(path, Traverse.GO_UP);
+		if (paths == null || paths.isEmpty())
+			return null;
+		IPath modifier = paths.keySet().iterator().next();
+		return path.append(modifier);
+	}
+
 	private static void getGitDirsInParents(File file, Map<IPath, File> gitDirs) {
 		int levelUp = 0;
 		while (file != null) {

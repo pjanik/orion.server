@@ -13,11 +13,11 @@ package org.eclipse.orion.server.git;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import org.eclipse.core.runtime.IPath;
-import org.eclipse.core.runtime.Path;
+import org.eclipse.core.runtime.*;
 import org.eclipse.jgit.lib.*;
 import org.eclipse.orion.internal.server.servlets.ProtocolConstants;
 import org.eclipse.orion.server.git.servlets.GitServlet;
+import org.eclipse.orion.server.git.servlets.GitUtils;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -26,7 +26,7 @@ import org.json.JSONObject;
  */
 public class BranchToJSONConverter {
 
-	public static JSONObject toJSON(Ref ref, Repository db, URI baseLocation, int segmentsToRemove) throws JSONException, URISyntaxException, IOException {
+	public static JSONObject toJSON(Ref ref, Repository db, URI baseLocation, int segmentsToRemove) throws JSONException, URISyntaxException, IOException, CoreException {
 		JSONObject result = new JSONObject();
 		String shortName = Repository.shortenRefName(ref.getName());
 		result.put(ProtocolConstants.KEY_NAME, shortName);
@@ -38,7 +38,8 @@ public class BranchToJSONConverter {
 		result.put(ProtocolConstants.KEY_LOCATION, location);
 
 		// add Git Clone URI
-		newPath = new Path(GitServlet.GIT_URI).append(GitConstants.CLONE_RESOURCE).append(basePath.removeFirstSegments(segmentsToRemove));
+		IPath rootPath = GitUtils.getGitRootPath(basePath.removeFirstSegments(segmentsToRemove));
+		newPath = new Path(GitServlet.GIT_URI).append(GitConstants.CLONE_RESOURCE).append(rootPath);
 		URI cloneLocation = new URI(location.getScheme(), location.getUserInfo(), location.getHost(), location.getPort(), newPath.toString(), location.getQuery(), location.getFragment());
 		result.put(GitConstants.KEY_CLONE, cloneLocation);
 
