@@ -14,12 +14,16 @@ import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.Map.Entry;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import org.eclipse.core.runtime.*;
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.errors.JGitInternalException;
+import org.eclipse.jgit.api.errors.NoHeadException;
 import org.eclipse.jgit.lib.*;
 import org.eclipse.jgit.storage.file.FileRepository;
 import org.eclipse.jgit.transport.*;
@@ -187,15 +191,30 @@ public class GitRemoteHandlerV1 extends ServletResourceHandler<String> {
 		return false;
 	}
 
-	private boolean handlePost(HttpServletRequest request, HttpServletResponse response, String path) throws IOException, JSONException, ServletException, URISyntaxException, CoreException {
+	private boolean handlePost(HttpServletRequest request, HttpServletResponse response, String path) throws IOException, JSONException, ServletException, URISyntaxException, CoreException, NoSuchAlgorithmException, NoHeadException, JGitInternalException {
 		Path p = new Path(path);
 		if (p.segment(0).equals("file")) { //$NON-NLS-1$
 			// handle adding new remote
 			// expected path: /git/remote/file/{path}
 			return addRemote(request, response, path);
 		} else {
+			// push/fetch
+			// /git/remote/{remote}/{branch}/file/{path}
+
 			JSONObject requestObject = OrionServlet.readJSONRequest(request);
 			boolean fetch = Boolean.parseBoolean(requestObject.optString(GitConstants.KEY_FETCH, null));
+
+			// check ETag precondition for push
+			String receivedETag = request.getHeader("If-Match");
+			if (receivedETag != null && !fetch) {
+				File gitDir = GitUtils.getGitDir(p.removeFirstSegments(2));
+				Repository db = new FileRepository(gitDir);
+				Git git = new Git(db);
+				if (receivedETag != null && !receivedETag.equals(GitETagUtilities.generateCommitsETag(db))) {
+					return statusHandler.handleRequest(request, response, new ServerStatus(IStatus.ERROR, HttpServletResponse.SC_PRECONDITION_FAILED, "Resource is out of sync with the server.", null));
+				}
+			}
+
 			String srcRef = requestObject.optString(GitConstants.KEY_PUSH_SRC_REF, null);
 			boolean tags = requestObject.optBoolean(GitConstants.KEY_PUSH_TAGS, false);
 

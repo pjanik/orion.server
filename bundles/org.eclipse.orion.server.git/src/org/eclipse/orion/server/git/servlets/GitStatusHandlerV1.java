@@ -27,8 +27,7 @@ import org.eclipse.jgit.storage.file.FileRepository;
 import org.eclipse.orion.internal.server.servlets.ProtocolConstants;
 import org.eclipse.orion.internal.server.servlets.ServletResourceHandler;
 import org.eclipse.orion.server.core.ServerStatus;
-import org.eclipse.orion.server.git.BaseToCloneConverter;
-import org.eclipse.orion.server.git.GitConstants;
+import org.eclipse.orion.server.git.*;
 import org.eclipse.orion.server.git.servlets.GitUtils.Traverse;
 import org.eclipse.orion.server.servlets.OrionServlet;
 import org.eclipse.osgi.util.NLS;
@@ -88,6 +87,10 @@ public class GitStatusHandlerV1 extends ServletResourceHandler<String> {
 
 			result.put(GitConstants.KEY_INDEX, statusToIndexLocation(baseLocation));
 			result.put(GitConstants.KEY_COMMIT, statusToCommitLocation(baseLocation, Constants.HEAD));
+
+			String etag = GitETagUtilities.generateStatusETag(db);
+			result.put(ProtocolConstants.KEY_ETAG, etag);
+			response.setHeader(ProtocolConstants.KEY_ETAG, etag);
 
 			OrionServlet.writeJSONResponse(request, response, result);
 			return true;

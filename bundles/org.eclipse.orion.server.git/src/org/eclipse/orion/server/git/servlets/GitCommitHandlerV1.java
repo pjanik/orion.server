@@ -14,6 +14,7 @@ import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.Map.Entry;
 import javax.servlet.ServletException;
@@ -221,6 +222,11 @@ public class GitCommitHandlerV1 extends ServletResourceHandler<String> {
 					result.put(GitConstants.KEY_LOG_FROM_REF, BranchToJSONConverter.toJSON(fromRefId.getTarget(), db, getURI(request), 3));
 				}
 			}
+
+			String etag = GitETagUtilities.generateCommitsETag(db);
+			result.put(ProtocolConstants.KEY_ETAG, etag);
+			response.setHeader(ProtocolConstants.KEY_ETAG, etag);
+
 			OrionServlet.writeJSONResponse(request, response, result);
 			return true;
 		} catch (NoHeadException e) {
@@ -229,6 +235,8 @@ public class GitCommitHandlerV1 extends ServletResourceHandler<String> {
 		} catch (JGitInternalException e) {
 			String msg = NLS.bind("An internal error occured when generating log for ref {0}", refIdsRange); //$NON-NLS-1$
 			return statusHandler.handleRequest(request, response, new ServerStatus(IStatus.ERROR, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, msg, e));
+		} catch (NoSuchAlgorithmException e) {
+			return statusHandler.handleRequest(request, response, new ServerStatus(IStatus.ERROR, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Wrong hashing algorithm when generating ETag.", e));
 		}
 	}
 
@@ -348,13 +356,20 @@ public class GitCommitHandlerV1 extends ServletResourceHandler<String> {
 		return new URI(baseLocation.getScheme(), baseLocation.getAuthority(), diffPath, null, null);
 	}
 
-	private boolean handlePost(HttpServletRequest request, HttpServletResponse response, Repository db, Path path) throws ServletException, NoFilepatternException, IOException, JSONException, CoreException, URISyntaxException {
+	private boolean handlePost(HttpServletRequest request, HttpServletResponse response, Repository db, Path path) throws ServletException, NoFilepatternException, IOException, JSONException, CoreException, URISyntaxException, NoSuchAlgorithmException, NoHeadException, JGitInternalException {
 		IPath filePath = path.hasTrailingSeparator() ? path.removeFirstSegments(1) : path.removeFirstSegments(1).removeLastSegments(1);
 		Set<Entry<IPath, File>> set = GitUtils.getGitDirs(filePath, Traverse.GO_UP).entrySet();
 		File gitDir = set.iterator().next().getValue();
 		if (gitDir == null)
 			return false; // TODO: or an error response code, 405?
 		db = new FileRepository(gitDir);
+
+		// check ETag precondition
+		String receivedETag = request.getHeader("If-Match");
+		if (receivedETag != null && !receivedETag.equals(GitETagUtilities.generateStatusETag(db))) {
+			return statusHandler.handleRequest(request, response, new ServerStatus(IStatus.ERROR, HttpServletResponse.SC_PRECONDITION_FAILED, "Resource is out of sync with the server.", null));
+		}
+		// test passed, so continue commit operation
 
 		JSONObject requestObject = OrionServlet.readJSONRequest(request);
 		String commitToMerge = requestObject.optString(GitConstants.KEY_MERGE, null);
